@@ -10,9 +10,9 @@ import (
 )
 
 var wg sync.WaitGroup
-var subject string = "hello"
-var str = "ping"
 
+//Wait group logic is necessary because NATS for default is are in memory state
+//Im just create two parallel routines and force consumer and publish at same time
 func main() {
 	scenarioProducerAndConsumerSync()
 	scenarioProducerAndConsumerAsync()
@@ -31,7 +31,7 @@ func consumerSync(subject string) {
 	consumer.Subscribe(subject)
 	defer consumer.Close()
 	message := consumer.Next(5 * time.Second)
-	fmt.Println(string(message))
+	fmt.Println("Sync: " + string(message))
 	wg.Done()
 }
 
@@ -46,7 +46,7 @@ func consumerAsync(subject string) {
 	for {
 		select {
 		case msg := <-ch:
-			fmt.Println(string(msg.Data))
+			fmt.Println("Async: " + string(msg.Data))
 		}
 	}
 }
@@ -62,23 +62,17 @@ func producerPerSecond(subject, message string, seconds int) {
 }
 
 func scenarioProducerAndConsumerSync() {
-	//This logic is necessary because NATS for default is are in memory state
-	//Im just create two parallel routines and force consumer and publish at same time
-	fmt.Println("Execute Producer and Consumer Sync")
 	wg.Add(1)
-	go consumerSync(subject)
-	go producer(subject, str)
+	go consumerSync("sync")
+	go producer("sync", "ping")
 	wg.Wait()
-	fmt.Println("Execute Producer and Consumer Sync finish")
 }
 
 func scenarioProducerAndConsumerAsync() {
-	fmt.Println("Execute Producer and Consumer Async")
 	wg.Add(1)
-	go consumerAsync(subject)
-	go producerPerSecond(subject, "ping-async", 5)
+	go consumerAsync("async")
+	go producerPerSecond("async", "ping-async", 5)
 	wg.Wait()
-	fmt.Println("Execute Producer and Consumer Async finish")
 }
 
 func scenarioRequestReply() {
