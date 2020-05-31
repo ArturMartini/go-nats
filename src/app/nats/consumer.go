@@ -1,6 +1,7 @@
 package nats
 
 import (
+	"errors"
 	"fmt"
 	"github.com/nats-io/nats.go"
 	"log"
@@ -10,6 +11,10 @@ import (
 
 type Consumer interface {
 	Next(timeout time.Duration) []byte
+	Subscribe(subject string) error
+	SubscribeAsync(subject string) (chan *nats.Msg, error)
+	Reply(subject string)
+	Close()
 }
 
 type consumerImpl struct {
@@ -19,24 +24,28 @@ type consumerImpl struct {
 
 var consumer Consumer
 
-func NewConsumer(subject string) Consumer {
+func NewConsumer() Consumer {
 	var once sync.Once
 	once.Do(func() {
 		conn := Connect("consumer", nats.DefaultURL)
-		sub, err := conn.SubscribeSync(subject)
-		if err != nil {
-			log.Fatal(fmt.Sprintf("Error when subscribe: %s", subject))
-		}
-
 		consumer = &consumerImpl{
 			c: conn,
-			s: sub,
 		}
 	})
 	return consumer
 }
 
-func (r consumerImpl) Next(timeout time.Duration) []byte {
+func (r *consumerImpl) Subscribe(subject string) error {
+	sub, err := r.c.SubscribeSync(subject)
+	if err != nil {
+		log.Println(fmt.Sprintf("Error when subscribe: %s", subject))
+		return err
+	}
+	r.s = sub
+	return nil
+}
+
+func (r *consumerImpl) Next(timeout time.Duration) []byte {
 	var data []byte
 	m, err := r.s.NextMsg(timeout)
 	if err != nil {
@@ -45,4 +54,29 @@ func (r consumerImpl) Next(timeout time.Duration) []byte {
 	}
 
 	return m.Data
+}
+
+func (r *consumerImpl) SubscribeAsync(subject string) (chan *nats.Msg, error) {
+	ch := make(chan *nats.Msg, 64)
+	_, err := r.c.ChanSubscribe(subject, ch)
+	if err != nil {
+		return nil, errors.New("Error when try create subscribe")
+	}
+	return ch, nil
+}
+
+func (r *consumerImpl) Reply(sub string) {
+	var pause bool
+	for !pause {
+		r.c.Subscribe(sub, func(m *nats.Msg) {
+			fmt.Println("Request: " + string(m.Data))
+			r.c.Publish(m.Reply, []byte("pong"))
+			pause = true
+		})
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func (r *consumerImpl) Close() {
+	r.c.Close()
 }

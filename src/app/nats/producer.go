@@ -4,16 +4,19 @@ import (
 	nats "github.com/nats-io/nats.go"
 	"log"
 	"sync"
+	"time"
 )
-
 
 type Producer interface {
 	Send(string, []byte) error
+	Request(string, []byte, time.Duration) string
+	Close()
 }
 
 type producerImpl struct {
 	conn *nats.Conn
 }
+
 var producer Producer
 
 func NewProducer() Producer {
@@ -33,4 +36,20 @@ func (r producerImpl) Send(subject string, bytes []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (r producerImpl) Request(subject string, bytes []byte, timeout time.Duration) string {
+	start := time.Now()
+	for time.Now().Before(start.Add(timeout)) {
+		msg, err := r.conn.Request(subject, bytes, 1 * time.Second)
+		if err != nil {
+			continue
+		}
+		return string(msg.Data)
+	}
+	return ""
+}
+
+func (r producerImpl) Close() {
+	r.conn.Close()
 }
