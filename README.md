@@ -1,5 +1,5 @@
-    # go-nats
-This project have an examples of how to integration with NATS
+# go-nats 
+This project have an examples of how to use client integration with NATS
 
 ## For run project you need
 * Go installed
